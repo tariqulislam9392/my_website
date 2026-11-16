@@ -10,6 +10,7 @@ from app.api.permissions import require_roles
 from app.core.database import get_db
 from app.models.commerce import (
     ApplicationStatus,
+    Category,
     Coupon,
     InventoryMovement,
     OrderItem,
@@ -25,6 +26,8 @@ from app.models.commerce import (
 )
 from app.models.user import User, UserRole
 from app.schemas.commerce import (
+    AdminProductCreate,
+    AdminShopCreate,
     AdminDashboard,
     AdminUserRead,
     CouponCreate,
@@ -34,6 +37,7 @@ from app.schemas.commerce import (
     OrderStatusUpdate,
     PaymentRead,
     PaymentVerification,
+    ProductRead,
     RefundCreate,
     RefundRead,
     SellerApplicationRead,
@@ -219,6 +223,73 @@ def admin_list_shops(
     db: Session = Depends(get_db),
 ) -> list[Shop]:
     return list(db.scalars(select(Shop).order_by(Shop.created_at.desc())))
+
+
+@router.post("/shops", response_model=ShopRead, status_code=status.HTTP_201_CREATED)
+def create_admin_shop(
+    payload: AdminShopCreate,
+    admin: User = Depends(admin_only),
+    db: Session = Depends(get_db),
+) -> Shop:
+    existing_shop = db.scalar(select(Shop).where(Shop.owner_id == admin.id))
+    if existing_shop is not None:
+        raise HTTPException(status_code=409, detail="Admin shop already exists")
+    shop = Shop(
+        owner_id=admin.id,
+        name=payload.name,
+        description=payload.description,
+        is_verified=True,
+    )
+    db.add(shop)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Shop name is already in use") from None
+    db.refresh(shop)
+    return shop
+
+
+@router.get("/products", response_model=list[ProductRead])
+def admin_list_products(
+    shop_id: int | None = Query(default=None, gt=0),
+    _: User = Depends(admin_only),
+    db: Session = Depends(get_db),
+) -> list[Product]:
+    statement = select(Product).order_by(Product.created_at.desc())
+    if shop_id is not None:
+        statement = statement.where(Product.shop_id == shop_id)
+    return list(db.scalars(statement))
+
+
+@router.post("/products", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+def admin_create_product(
+    payload: AdminProductCreate,
+    admin: User = Depends(admin_only),
+    db: Session = Depends(get_db),
+) -> Product:
+    shop = db.get(Shop, payload.shop_id)
+    if shop is None or shop.owner_id != admin.id or not shop.is_active:
+        raise HTTPException(status_code=404, detail="Active admin shop not found")
+    category = db.get(Category, payload.category_id)
+    if category is None or not category.is_active:
+        raise HTTPException(status_code=404, detail="Active category not found")
+    product_data = payload.model_dump(exclude={"shop_id"})
+    product = Product(shop_id=shop.id, **product_data)
+    db.add(product)
+    db.flush()
+    if product.stock:
+        db.add(
+            InventoryMovement(
+                product_id=product.id,
+                actor_id=admin.id,
+                quantity_change=product.stock,
+                reason="Initial stock",
+            )
+        )
+    db.commit()
+    db.refresh(product)
+    return product
 
 
 @router.patch("/shops/{shop_id}/active")

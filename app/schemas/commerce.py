@@ -79,6 +79,19 @@ class ShopRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AdminShopCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    description: str = Field(default="", max_length=2000)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Shop name must not be empty")
+        return value
+
+
 class SellerDecision(BaseModel):
     note: str = Field(default="", max_length=500)
 
@@ -155,6 +168,10 @@ class ProductCreate(BaseModel):
         if any(not item.startswith(("https://", "http://")) for item in self.images):
             raise ValueError("Product images must be http(s) URLs")
         return self
+
+
+class AdminProductCreate(ProductCreate):
+    shop_id: int = Field(gt=0)
 
 
 class ProductUpdate(BaseModel):

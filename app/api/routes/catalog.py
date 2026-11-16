@@ -75,10 +75,12 @@ def _public_products_query():
 @router.get("/categories", response_model=list[CategoryRead])
 def list_categories(
     parent_id: int | None = None,
+    include_children: bool = False,
     db: Session = Depends(get_db),
 ) -> list[Category]:
     statement = select(Category).where(Category.is_active.is_(True))
-    statement = statement.where(Category.parent_id == parent_id)
+    if not include_children:
+        statement = statement.where(Category.parent_id == parent_id)
     return list(db.scalars(statement.order_by(Category.name)))
 
 

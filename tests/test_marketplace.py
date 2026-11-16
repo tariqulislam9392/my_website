@@ -272,3 +272,80 @@ def test_local_frontend_cors_preflight(client: TestClient) -> None:
     )
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_admin_can_create_shop_categories_and_public_products(client: TestClient) -> None:
+    admin_headers = {
+        "Authorization": "Bearer "
+        + _login(
+            client,
+            "admin@example.com",
+            "test-admin-password-with-more-than-12",
+        )
+    }
+
+    shop = client.post(
+        "/api/v1/admin/shops",
+        headers=admin_headers,
+        json={"name": "ShopHub Official", "description": "Official store"},
+    )
+    assert shop.status_code == 201
+
+    category = client.post(
+        "/api/v1/categories",
+        headers=admin_headers,
+        json={"name": "Home & Kitchen"},
+    )
+    assert category.status_code == 201
+    category_id = category.json()["id"]
+
+    subcategory = client.post(
+        "/api/v1/categories",
+        headers=admin_headers,
+        json={"name": "Kitchen tools", "parent_id": category_id},
+    )
+    assert subcategory.status_code == 201
+    all_categories = client.get(
+        "/api/v1/categories", params={"include_children": "true"}
+    ).json()
+    assert {item["id"] for item in all_categories} == {
+        category_id,
+        subcategory.json()["id"],
+    }
+
+    product = client.post(
+        "/api/v1/admin/products",
+        headers=admin_headers,
+        json={
+            "shop_id": shop.json()["id"],
+            "category_id": subcategory.json()["id"],
+            "name": "Steel cooking pot",
+            "description": "Everyday cookware",
+            "price": "1250.00",
+            "stock": 12,
+            "low_stock_threshold": 3,
+            "images": ["https://example.com/pot.jpg"],
+        },
+    )
+    assert product.status_code == 201
+    assert product.json()["shop_id"] == shop.json()["id"]
+    assert client.get("/api/v1/products").json()[0]["id"] == product.json()["id"]
+    assert client.get(
+        "/api/v1/admin/products",
+        headers=admin_headers,
+        params={"shop_id": shop.json()["id"]},
+    ).json()[0]["id"] == product.json()["id"]
+
+    customer_token, _ = _register(client, "catalog-customer@example.com")
+    denied = client.post(
+        "/api/v1/admin/products",
+        headers={"Authorization": f"Bearer {customer_token}"},
+        json={
+            "shop_id": shop.json()["id"],
+            "category_id": category_id,
+            "name": "Not allowed",
+            "price": "1.00",
+            "stock": 1,
+        },
+    )
+    assert denied.status_code == 403
