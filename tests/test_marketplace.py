@@ -259,3 +259,16 @@ def test_online_checkout_is_explicitly_disabled_without_gateway(
     )
     assert response.status_code == 503
     assert "not configured" in response.json()["detail"]
+
+
+def test_local_frontend_cors_preflight(client: TestClient) -> None:
+    response = client.options(
+        "/api/v1/products",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"

@@ -42,6 +42,10 @@ at least 32 characters. SMTP settings (`SMTP_HOST`, `SMTP_PORT`,
 reset email in production. In development/test, the reset token is returned by
 the forgot-password endpoint to support local testing.
 
+Browser clients hosted on another origin must be listed in `CORS_ORIGINS` as a
+JSON array, for example `["https://your-frontend.example"]`, then the backend
+must be redeployed. Local Vite origins are allowed by default.
+
 ## Main API groups
 
 - Authentication: `/api/v1/auth/*` — register, login, logout, forgot/reset password

@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./shophub.db"
     jwt_secret_key: SecretStr | None = None
     access_token_expire_minutes: int = Field(default=30, gt=0, le=1440)
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    )
     bootstrap_admin_email: EmailStr | None = None
     bootstrap_admin_name: str = "ShopHub Admin"
     bootstrap_admin_password: SecretStr | None = None
